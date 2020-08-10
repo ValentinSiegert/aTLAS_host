@@ -1,0 +1,4 @@
+websockets==8.1
+asgiref==3.2.7
+python-serializer==1.0.2
+aioprocessing==1.0.1
