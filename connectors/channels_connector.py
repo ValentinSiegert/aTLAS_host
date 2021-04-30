@@ -2,19 +2,29 @@ import websockets
 from connectors.basic_connector import BasicConnector
 import json
 import asyncio
+from time import sleep
 
 
 class ChannelsConnector(BasicConnector):
     async def register_at_director(self):
-        uri = "ws://" + self.director_hostname + "/supervisors/"
-        self.websocket = await websockets.client.connect(uri)
+        print("Registering at Director...")
+        await self.connect_web_socket()
         await self.set_max_agents()
+        print("Fully Registered at Director")
+
+    async def connect_web_socket(self):
+        connection_attempts = 0
+        while self.websocket is None:
+            try:
+                self.websocket = await websockets.client.connect(self.director_uri)
+            except ConnectionRefusedError:
+                sleep(5 + connection_attempts * 2)
+                connection_attempts = connection_attempts + 1
 
     async def set_max_agents(self):
         register_max_agents = {"type": "max_agents", "max_agents": self.max_agents}
         await self.send_json(register_max_agents)
-        response = await self.receive_json()
-        print(response)
+        await self.receive_json()
 
     async def send_json(self, message):
         await self.websocket.send(json.dumps(message))
@@ -52,6 +62,7 @@ class ChannelsConnector(BasicConnector):
 
     def __init__(self, director_hostname, max_agents, send_queue, pipe_dict):
         super().__init__(director_hostname, max_agents, send_queue, pipe_dict)
+        self.director_uri = "ws://" + self.director_hostname + "/supervisors/"
         self.websocket = None
 
 

@@ -5,7 +5,7 @@ from artifacts.authority import authority
 from artifacts.agreement import agreement
 from artifacts.age import age_check
 from artifacts.recency import recency
-from artifacts.relatedRecources import related
+from artifacts.related_recources import related
 from artifacts.specificity import specificity
 from artifacts.provenance import provenance
 from artifacts.topic import topic
