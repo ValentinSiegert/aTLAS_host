@@ -9,29 +9,41 @@ from exec.agent_client import AgentClient
 
 
 class ScenarioRun(multiproc.Process):
-    # method copied from https://stackoverflow.com/a/45690594
+    """
+    The supervisors subprocess proxy for each scenario run to be executed with at least one agent at the supervisor.
+    """
     @staticmethod
     def find_free_port():
+        """
+        Find a free TCP port to use for a new socket.
+        Method copied from https://stackoverflow.com/a/45690594
+
+        :return: Free port number.
+        """
         with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
             s.bind(('', 0))
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             return s.getsockname()[1]
 
     def prepare_scenario(self):
+        """
+        Prepare the scenario run by `1)` logging for all agents their initial trust value logs,
+        `2)` initializing all local agents' server(s), `3)` sending the local discovery to the director,
+        and `4)` receiving and saving the global discovery with all agents' addresses.
+        """
         local_discovery = {}
         # logging for all Agents their trust history and their topic values if given
         for agent in self.scenario.agents:
             self.logger.write_bulk_to_agent_history(agent, self.scenario.history[agent])
-            if self.scenario.topics and agent in self.scenario.topics:
-                self.logger.write_bulk_to_agent_topic_trust(agent, self.scenario.topics[agent])
+            if self.scenario.agent_uses_metric(agent, 'content_trust.topic'):
+                self.logger.write_bulk_to_agent_topic_trust(agent, self.scenario.agents_with_metric(
+                    'content_trust.topic')[agent])
         # creating servers
         for agent in self.agents_at_supervisor:
             free_port = self.find_free_port()
             local_discovery[agent] = self.ip_address + ":" + str(free_port)
-            server = AgentServer(agent, self.ip_address, free_port,
-                                 self.scenario.metrics_per_agent[agent], self.scenario.weights,
-                                 self.scenario.trust_thresholds, self.scenario.authorities, self.logger,
-                                 self.observations_done)
+            server = AgentServer(agent, self.ip_address, free_port, self.scenario.metrics_per_agent[agent],
+                                 self.scenario.scales_per_agent[agent], self.logger, self.observations_done)
             self.threads_server.append(server)
             server.start()
         discovery_message = {"type": "agent_discovery", "scenario_run_id": self.scenario_run_id,
@@ -43,12 +55,30 @@ class ScenarioRun(multiproc.Process):
         print(self.discovery)
 
     def assert_scenario_start(self):
+        """
+        Wait for the scenario run to start by receiving the respective message from the director.
+        It further asserts that all scenario's agents have to be discovered before the start and
+        thus throws an AssertionError if not.
+
+        :rtype: None
+        :raises AssertionError: Not all agents are discovered or the received message is not the start signal.
+        """
         start_confirmation = self.receive_pipe.recv()
         assert list(self.discovery.keys()) == self.scenario.agents  # all agents need to be discovered
         assert start_confirmation["scenario_status"] == "started"
         self.scenario_runs = True
 
     def run(self):
+        """
+        Executes the scenario run by first preparing the scenario and then awaiting the scenario to start.
+        During scenario run, Supervisor is within this run method scheduling the observations by starting
+        local observations if all observations before were already executed. Further, it resolves the before
+        dependencies of still existing observations to be executed by an agent under this supervisor if receiving
+        an observation_done message. It sends out an observation_done message itself if one observation was executed
+        by one agent under this supervisor.
+
+        :rtype: None
+        """
         self.prepare_scenario()
         self.assert_scenario_start()
         while self.scenario_runs:
@@ -67,8 +97,8 @@ class ScenarioRun(multiproc.Process):
                     "scenario_run_id": self.scenario_run_id,
                     "observation_id": observation_done_dict["observation_id"],
                     "receiver": observation_done_dict["receiver"],
-                    "trust_log": '<br>'.join(self.logger.readlines_from_trust_log()),
-                    "receiver_trust_log": '<br>'.join(self.logger.readlines_from_agent_trust_log(
+                    "trust_log": '<br>'.join(self.logger.read_lines_from_trust_log()),
+                    "receiver_trust_log": '<br>'.join(self.logger.read_lines_from_agent_trust_log(
                         observation_done_dict["receiver"])),
                 }
                 self.send_queue.put(done_message)
@@ -96,6 +126,13 @@ class ScenarioRun(multiproc.Process):
         self.supervisor_pipe.send(end_message)
 
     def remove_observation_dependency(self, observations_done):
+        """
+        Removes any observations given from all `observations_to_exec`'s `before` dependencies.
+
+        :param observations_done: All observation ids to be removed from the `before` dependency.
+        :type observations_done: list
+        :rtype: None
+        """
         for observation in self.observations_to_exec:
             observation["before"] = [obs_id for obs_id in observation["before"] if obs_id not in observations_done]
 

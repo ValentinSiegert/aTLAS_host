@@ -9,7 +9,19 @@ from scenario_run import ScenarioRun
 
 
 class Supervisor:
+    """
+    The class of an aTLAS supervisor. This module is also used as starting point for a trustlab environment part at one
+    host and thus registers at the director by init as well as it represents the IO interface to the director
+    and other supervisors in the lab.
+    """
     def run(self):
+        """
+        Represents the run method of a supervisor who receives messages from the director and sends scenario dependent
+        other messages to the director. It uses a connector class to handle the actual connection to the director and
+        a ScenarioRun objects to represent each scenario run by one subprocess.
+
+        :rtype: None
+        """
         self.connector.start()
         while self.takes_new_scenarios:
             received_msg = self.receive_pipe.recv()
@@ -27,7 +39,7 @@ class Supervisor:
                 self.observations_done[index_done]["used_by"] = ""
                 self.send_queue.put(received_msg)
             elif received_msg['type'] == 'scenario_registration':
-                # TODO check if enough agents are left and scenario can be really started
+                # TODO: check if enough agents are left and scenario can be really started
                 new_scenario_run_id = received_msg["scenario_run_id"]
                 self.agents_in_use += len(received_msg["agents_at_supervisor"])
                 recv_end, send_end = aioprocessing.AioPipe(False)

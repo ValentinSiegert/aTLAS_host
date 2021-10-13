@@ -1,4 +1,4 @@
-# <img src="https://github.com/N0omB/aTLAS/raw/master/logos/atlas_orange.svg" alt="aTLAS orange" width="5%"> TrustLab Host
+# <img src="https://github.com/N0omB/aTLAS/raw/master/_logos/atlas_grey.svg" alt="aTLAS orange" width="5%"> TrustLab Host
 
 This is the host library of the TrustLab aTLAS and thus a submodule of aTLAS' main repository.
 (https://github.com/N0omB/aTLAS)
@@ -12,11 +12,6 @@ This is the host library of the TrustLab aTLAS and thus a submodule of aTLAS' ma
 3. Setup pipenv in submodule root:
     ```bash
     pipenv install
-    ```
-   **OR** install all requirements in your virtual environment for this submodule with:
-   ```bash
-    pip install -r requirements.pip --exists-action w
-    ```
 
 ## Run
 
@@ -24,11 +19,11 @@ This is the host library of the TrustLab aTLAS and thus a submodule of aTLAS' ma
 
 2. Start supervisor, e.g. with a maximum capacity of 10 agents:
     ```bash
-    python3 supervisors.py 10
+    python supervisors.py 10
     ```
    For more specific preferences conduct the help of `supervisors.py`:
    ```bash
-    python3 supervisors.py -h
+    python supervisors.py -h
     ```
 
 ## Links To Know
