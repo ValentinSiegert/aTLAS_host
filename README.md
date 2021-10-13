@@ -1,4 +1,4 @@
-# <img src="https://github.com/N0omB/aTLAS/raw/master/_logos/atlas_grey.svg" alt="aTLAS orange" width="5%"> TrustLab Host
+# <img src="https://github.com/N0omB/aTLAS/raw/master/_logos/atlas_grey.svg" alt="aTLAS grey" width="5%"> aTLAS Host
 
 This is the host library of the TrustLab aTLAS and thus a submodule of aTLAS' main repository.
 (https://github.com/N0omB/aTLAS)
