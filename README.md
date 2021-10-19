@@ -1,11 +1,11 @@
-# <img src="https://github.com/N0omB/aTLAS/raw/master/_logos/atlas_grey.svg" alt="aTLAS grey" width="5%"> aTLAS Host
+# <img src="https://github.com/ValentinSiegert/aTLAS/raw/master/_logos/atlas_grey.svg" alt="aTLAS grey" width="5%"> aTLAS Host
 
 This is the host library of the TrustLab aTLAS and thus a submodule of aTLAS' main repository.
-(https://github.com/N0omB/aTLAS)
+(https://github.com/ValentinSiegert/aTLAS)
 
 ## Setup
 
-1. Ensure Setup of aTLAS. (https://github.com/N0omB/aTLAS)
+1. Ensure Setup of aTLAS. (https://github.com/ValentinSiegert/aTLAS)
 
 2. Clone submodule to host where required if not on same machine as aTLAS.
 
@@ -15,7 +15,7 @@ This is the host library of the TrustLab aTLAS and thus a submodule of aTLAS' ma
 
 ## Run
 
-1. Ensure Running of aTLAS. (https://github.com/N0omB/aTLAS)
+1. Ensure Running of aTLAS. (https://github.com/ValentinSiegert/aTLAS)
 
 2. Start supervisor, e.g. with a maximum capacity of 10 agents:
     ```bash
@@ -35,4 +35,4 @@ https://vsr.informatik.tu-chemnitz.de/projects/2020/atlas/
 https://vsr.informatik.tu-chemnitz.de/projects/2020/atlas/demo/
 
 * aTLAS main repository \
-https://github.com/N0omB/aTLAS
+https://github.com/ValentinSiegert/aTLAS
