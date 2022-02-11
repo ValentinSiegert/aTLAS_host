@@ -1,7 +1,7 @@
+import asyncio
+import json
 import websockets
 from connectors.basic_connector import BasicConnector
-import json
-import asyncio
 from time import sleep
 
 
@@ -10,13 +10,13 @@ class ChannelsConnector(BasicConnector):
         print("Registering at Director...")
         await self.connect_web_socket()
         await self.set_max_agents()
-        print("Fully Registered at Director")
+        print(f"Fully Registered a capacity of max. {self.max_agents} agents at Director")
 
     async def connect_web_socket(self):
         connection_attempts = 0
         while self.websocket is None:
             try:
-                self.websocket = await websockets.client.connect(self.director_uri)
+                self.websocket = await websockets.connect(self.director_uri)
             except ConnectionRefusedError:
                 sleep(5 + connection_attempts * 2)
                 connection_attempts = connection_attempts + 1
@@ -32,22 +32,58 @@ class ChannelsConnector(BasicConnector):
     async def receive_json(self):
         return await self.websocket.recv()
 
+    async def consuming_message(self, message):
+        """
+        Consuming the full message received from the websocket.
+
+        :param message: The complete received message as JSON object.
+        :type message: dict or list
+        """
+        if message["type"] == "scenario_registration":
+            await self.pipe_dict["supervisor"].coro_send(message)
+        elif message["scenario_run_id"] in self.pipe_dict.keys() \
+                and not message["type"] == "scenario_registration":
+            await self.pipe_dict[message["scenario_run_id"]].coro_send(message)
+        else:
+            # TODO implement what happens if message does not fit in another case,
+            #  chunked transfer require similar handling
+            pass
+
+    async def consuming_chunked_transfer(self, message):
+        """
+        Consuming the messages which are part of the chunked transfer via the websocket.
+
+        :param message: The received message as JSON object, where type has to be 'chunked_transfer'.
+        :return: dict or list
+        """
+        print(f'Received part {message["part_number"][0]}/{message["part_number"][1]} ...')
+        if not self.chunked_parts and message['part_number'][0] == 1:
+            self.chunked_parts = message['part']
+        elif self.chunked_parts and message['part_number'][0] <= message['part_number'][1]:
+            self.chunked_parts += message['part']
+        else:
+            print('Supervisor received chunked transfer with unexpected status.')
+            print(f'Chunked parts {"exist" if self.chunked_parts else "do NOT exist"} '
+                  f'while message indicates part {message["part_number"]}.')
+        await self.send_json({'type': 'chunked_transfer_ack', 'part_number': message['part_number']})
+        print(f'Send "chunked_transfer_ack" message for {message["part_number"][0]}/{message["part_number"][1]}')
+        if message['part_number'][0] == message['part_number'][1]:
+            actual_message = json.loads(self.chunked_parts)
+            self.chunked_parts = None
+            await self.consuming_message(actual_message)
+
     async def consumer_handler(self):
         async for message in self.websocket:
             message_json = json.loads(message)
-            if message_json["type"] == "scenario_registration":
-                await self.pipe_dict["supervisor"].coro_send(message_json)
-            elif message_json["scenario_run_id"] in self.pipe_dict.keys() \
-                    and not message_json["type"] == "scenario_registration":
-                await self.pipe_dict[message_json["scenario_run_id"]].coro_send(message_json)
+            if message_json['type'] == 'chunked_transfer':
+                await self.consuming_chunked_transfer(message_json)
             else:
-                # TODO implement what happens if message does not fit in another case
-                pass
+                await self.consuming_message(message_json)
 
     async def producer_handler(self):
         while True:
             message = await self.send_queue.coro_get()
-            await self.websocket.send(json.dumps(message))
+            await self.send_json(message)
 
     async def handler(self):
         consumer_task = asyncio.ensure_future(self.consumer_handler())
@@ -64,6 +100,7 @@ class ChannelsConnector(BasicConnector):
         super().__init__(director_hostname, max_agents, send_queue, pipe_dict)
         self.director_uri = "ws://" + self.director_hostname + "/supervisors/"
         self.websocket = None
+        self.chunked_parts = None
 
 
 

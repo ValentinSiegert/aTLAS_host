@@ -6,6 +6,8 @@ from models import Observation, init_scale_object
 from trust.artifacts.content_trust.recommendation import recommendation_response
 from trust.artifacts.content_trust.popularity import popularity_response
 from config import BUFFER_SIZE
+from datetime import datetime
+from loggers.basic_logger import BasicLogger
 
 
 class ServerThread(Thread):
@@ -21,26 +23,37 @@ class ServerThread(Thread):
                     trust_operation = trust_protocol_message.split("_")[0]
                     trust_value = 0.0
                     if trust_operation == "recommendation":
-                        trust_value = recommendation_response(self.agent, trust_protocol_message.split("_")[1],
-                                                              self.scale, self.logger)
+                        resource_id = trust_protocol_message.split("_")[1]
+                        recency_str = trust_protocol_message.split("_")[-1]
+                        recency_limit = datetime.strptime(recency_str, BasicLogger.get_time_format_string())
+                        trust_value = recommendation_response(self.agent, resource_id, recency_limit, self.scale,
+                                                              self.logger)
                     elif trust_operation == "popularity":
-                        trust_value = popularity_response(self.agent, trust_protocol_message.split("_")[1],
-                                                          self.scale, self.logger, self.discovery)
+                        resource_id = trust_protocol_message.split("_")[1]
+                        recency_str = trust_protocol_message.split("_")[-1]
+                        recency_limit = datetime.strptime(recency_str, BasicLogger.get_time_format_string())
+                        trust_value = popularity_response(self.agent, resource_id, recency_limit, self.scale,
+                                                          self.logger)
                     trust_response = f"{trust_protocol_head}::{trust_protocol_message}::{trust_value}"
                     self.conn.send(bytes(trust_response, 'UTF-8'))
                 else:
                     observation = Observation(**json.loads(decoded_msg))
+                    resource_id = None
+                    if 'uri' in observation.details:
+                        resource_id = observation.details['uri']
                     self.logger.write_to_agent_message_log(observation)
                     if '__init__' in self.agent_behavior:
                         trust_value = eval_trust_with_init(self.agent, observation.sender, observation.topic,
                                                            self.agent_behavior, self.scale, self.logger, self.discovery)
                     else:
-                        trust_value = eval_trust(self.agent, observation.sender, observation.topic, self.agent_behavior,
+                        trust_value = eval_trust(self.agent, observation.sender, observation, self.agent_behavior,
                                                  self.scale, self.logger, self.discovery)
-                    self.logger.write_to_agent_history(self.agent, observation.sender, trust_value)
-                    self.logger.write_to_agent_topic_trust(self.agent, observation.sender, observation.topic,
-                                                           trust_value)
-                    self.logger.write_to_trust_log(self.agent, observation.sender, trust_value)
+                    self.logger.write_to_agent_history(self.agent, observation.sender, trust_value, resource_id)
+                    self.logger.write_to_trust_log(self.agent, observation.sender, trust_value, resource_id)
+
+                    # topic trust log is written within the trust evaluation
+                    # self.logger.write_to_agent_topic_trust(self.agent, observation.sender, observation.topic, trust_value, resource_id)
+
                     # TODO: how to work with trust decisions in general?
                     # if float(trust_value) < self.scenario.trust_thresholds['lower_limit']:
                     #     untrustedAgents.append(other_agent)

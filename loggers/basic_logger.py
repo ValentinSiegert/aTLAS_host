@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
+from models import Observation
 
 
 class BasicLogger(ABC):
@@ -24,20 +25,8 @@ class BasicLogger(ABC):
     @abstractmethod
     def read_lines_from_agent_history(self, agent, len_filter=None):
         """
-        Reads in the `agent`'s history log and returns all or max. len given by `len_filter`.
-
-        :param agent: Agent to read log data lines about.
-        :type agent: str
-        :param len_filter: Number of lines to return.
-        :type len_filter: int
-        :rtype: list
-        """
-        pass
-
-    @abstractmethod
-    def read_lines_from_agent_trust_log(self, agent, len_filter=None):
-        """
-        Reads in the `agent`'s trust logs and returns all or max. len given by `len_filter`.
+        Reads in the `agent`'s history log and returns all or max. len given by `len_filter`,
+        where return is list of dicts representing information per line.
 
         :param agent: Agent to read log data lines about.
         :type agent: str
@@ -50,7 +39,36 @@ class BasicLogger(ABC):
     @abstractmethod
     def read_lines_from_agent_topic_trust(self, agent, len_filter=None):
         """
-        Reads in the agent`'s topic trust log and returns all or max. len given by `len_filter`.
+        Reads in the agent`'s topic trust log and returns all or max. len given by `len_filter`,
+        where return is list of dicts representing information per line.
+
+        :param agent: Agent to read log data lines about.
+        :type agent: str
+        :param len_filter: Number of lines to return.
+        :type len_filter: int
+        :rtype: list
+        """
+        pass
+
+    @abstractmethod
+    def read_lines_from_agent_trust_log(self, agent, len_filter=None):
+        """
+        Reads in the `agent`'s trust logs and returns all or max. len given by `len_filter`,
+        where return is list of dicts representing information per line.
+
+        :param agent: Agent to read log data lines about.
+        :type agent: str
+        :param len_filter: Number of lines to return.
+        :type len_filter: int
+        :rtype: list
+        """
+        pass
+
+    @abstractmethod
+    def read_lines_from_agent_trust_log_str(self, agent, len_filter=None):
+        """
+        Reads in the `agent`'s trust logs and returns all or max. len given by `len_filter`,
+        where return is list of log strings.
 
         :param agent: Agent to read log data lines about.
         :type agent: str
@@ -63,7 +81,8 @@ class BasicLogger(ABC):
     @abstractmethod
     def read_lines_from_trust_log(self, len_filter=None):
         """
-        Reads in the supervisor's local trust log and returns all or max. len given by `len_filter`.
+        Reads in the supervisor's local trust log and returns all or max. len given by `len_filter`,
+        where return is list of dicts representing information per line.
 
         :param len_filter: Number of lines to return.
         :type len_filter: int
@@ -72,7 +91,19 @@ class BasicLogger(ABC):
         pass
 
     @abstractmethod
-    def write_to_agent_history(self, agent, other_agent, history_value):
+    def read_lines_from_trust_log_str(self, len_filter=None):
+        """
+        Reads in the supervisor's local trust log and returns all or max. len given by `len_filter`,
+        where return is list of log strings.
+
+        :param len_filter: Number of lines to return.
+        :type len_filter: int
+        :rtype: list
+        """
+        pass
+
+    @abstractmethod
+    def write_to_agent_history(self, agent, other_agent, history_value, resource_id=None):
         """
         Writes `history_value` with reference to `other_agent` in the `agent`'s history log.
 
@@ -82,12 +113,14 @@ class BasicLogger(ABC):
         :type other_agent: str
         :param history_value: Trust value.
         :type history_value: float or int
+        :param resource_id: The ID of a resource to (dis)trust in.
+        :type resource_id: str
         :rtype: None
         """
         pass
 
     @abstractmethod
-    def write_bulk_to_agent_history(self, agent, history):
+    def write_bulk_to_agent_history(self, agent, history, resource_id=None):
         """
         Writes all items in `history` in the `agent`'s history log.
 
@@ -95,12 +128,14 @@ class BasicLogger(ABC):
         :type agent: str
         :param history: History to add to history log with other agents as keys and their trust values as dict values.
         :type history: dict
+        :param resource_id: The ID of a resource to (dis)trust in.
+        :type resource_id: str
         :rtype: None
         """
         pass
 
     @abstractmethod
-    def write_to_agent_topic_trust(self, agent, other_agent, topic, topic_value):
+    def write_to_agent_topic_trust(self, agent, other_agent, topic, topic_value, resource_id=None):
         """
         Writes `topic_value` with reference to `other_agent` and `topic` in the `agent`'s topic log.
 
@@ -112,12 +147,14 @@ class BasicLogger(ABC):
         :type topic: str
         :param topic_value: Trust value.
         :type topic_value: float or int
+        :param resource_id: The ID of a resource to (dis)trust in.
+        :type resource_id: str
         :rtype: None
         """
         pass
 
     @abstractmethod
-    def write_bulk_to_agent_topic_trust(self, agent, topic_trust):
+    def write_bulk_to_agent_topic_trust(self, agent, topic_trust, resource_id=None):
         """
         Writes all items in `topic_trust` in the `agent`'s topic log.
 
@@ -125,6 +162,8 @@ class BasicLogger(ABC):
         :type agent: str
         :param topic_trust: Topic trusts with {other_agent: {topic: trust_value}}
         :type topic_trust: dict
+        :param resource_id: The ID of a resource to (dis)trust in.
+        :type resource_id: str
         :rtype: None
         """
         pass
@@ -135,13 +174,13 @@ class BasicLogger(ABC):
         Writes `observation` to message log.
 
         :param observation: Observation to log.
-        :type observation: str
+        :type observation: Observation
         :rtype: None
         """
         pass
 
     @abstractmethod
-    def write_to_trust_log(self, agent, other_agent, trust_value):
+    def write_to_trust_log(self, agent, other_agent, trust_value, resource_id=None):
         """
         Writes `trust_value` with reference to `other_agent` in the trust log.
 
@@ -151,12 +190,14 @@ class BasicLogger(ABC):
         :type other_agent: str
         :param trust_value: Trust value.
         :type trust_value: float or int
+        :param resource_id: The ID of a resource to (dis)trust in.
+        :type resource_id: str
         :rtype: None
         """
         pass
 
     @abstractmethod
-    def write_to_agent_trust_log(self, agent, metric_str, other_agent, trust_value):
+    def write_to_agent_trust_log(self, agent, metric_str, other_agent, trust_value, resource_id=None):
         """
         Writes `trust_value` with reference to `other_agent` and `metric_str` in the `agent`'s trust log.
 
@@ -168,27 +209,20 @@ class BasicLogger(ABC):
         :type other_agent: str
         :param trust_value: Trust value.
         :type trust_value: float or int
+        :param resource_id: The ID of a resource to (dis)trust in.
+        :type resource_id: str
         :rtype: None
-        """
-        pass
-
-    @abstractmethod
-    def line_about_other_agent(self, line, other_agent):
-        """
-        Returns whether line given is about other agent.
-
-        :param line: The data line where the other agent should be in.
-        :type line: str
-        :param other_agent: The other agent which should be in the line.
-        :type other_agent: str
-        :rtype: bool
         """
         pass
 
     @staticmethod
     def get_current_time():
         # %f is current microsecond
-        return datetime.now().strftime("%Y-%m-%d %H:%M:%S:%f")
+        return datetime.now().strftime(BasicLogger.get_time_format_string())
+
+    @staticmethod
+    def get_time_format_string():
+        return '%Y-%m-%d %H:%M:%S:%f'
 
     def __init__(self, scenario_run_id, semaphore):
         self.scenario_run_id = scenario_run_id

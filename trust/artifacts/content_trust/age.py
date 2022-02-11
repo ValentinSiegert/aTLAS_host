@@ -1,43 +1,32 @@
+import datetime
 from datetime import *
-
-###############################################################
-# Age checking
+from models import Scale, Observation
 
 
-def age_check(ID, entity, tag):
-    pass
-    # file_name = ID + ".txt"
-    # log_path = Logging.LOG_PATH / file_name
-    # fo = open(log_path.absolute(), "r+")
-    # logfile = fo.read()
-    # filesize = len(logfile)
-    # fo.seek(0)
-    # r_count = 0
-    # today = datetime.now()
-    # today = today.date()
-    # intime = 0
-    # outdated = 0
-    #
-    # #After opening the logfile, line for line is parsed to look if the searched
-    # #tag is outdated or not. If so, a negative value is returned
-    #
-    # while fo.tell() < filesize:
-    #     timelog_line = fo.readline()
-    #     if timelog_line[37:38] == entity:
-    #         tr = datetime.strptime(timelog_line[0:10], "%Y-%m-%d").date()
-    #
-    #         gap = today - timedelta(days=10)
-    #
-    #         if tr < gap and timelog_line[56:58] == tag:
-    #             r_count = r_count + 1
-    #             intime = intime + 0.1
-    #
-    #         else:
-    #             outdated = outdated - 0.1
-    # fo.close()
-    # if intime > 1:
-    #     intime = 1
-    # if outdated < -1:
-    #     outdated = -1
-    # return intime + outdated
+def age_check(agent_behavior, observation, scale):
+    """
+    :param agent_behavior:  Metrics to be used the agent.
+    :type agent_behavior: dict
+    :param observation: Content and metadata of message received and on which the trust is calculated.
+    :type observation: Observation
+    :param scale: The trust scale used by the agent
+    :type scale: Scale
+    :return: An age punishment value that is equal to the scale maximum value for recent publications and falls within
+    [default, max) if it exceeded the allowed lifetime.
+    :rtype: float or int
+    """
 
+    now = datetime.utcnow().timestamp()
+    age = observation.details['content_trust.publication_date'] + \
+        agent_behavior['content_trust.max_lifetime_seconds']
+
+    if now < age:  # within allowed lifetime
+        return scale.maximum_value()
+    else:  # exceeded lifetime
+        if 'content_trust.age_grace_period_seconds' in agent_behavior:
+            grace_value = (
+                now - age) / agent_behavior['content_trust.age_grace_period_seconds']
+            if grace_value < 1.0:  # within grace period
+                return (1-grace_value) * scale.maximum_value()
+
+        return scale.default_value()  # no grace period or grace period exceeded

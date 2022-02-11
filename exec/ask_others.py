@@ -24,6 +24,5 @@ def ask_other_agent(remote_ip, remote_port, message):
     receive_data = tcp_client.recv(BUFFER_SIZE)
     receive_data = receive_data.decode('utf-8')
     tcp_client.close()
-    received_value = float(receive_data.split("::")[2])
-    return received_value
+    return receive_data.split("::")[2]
 

@@ -32,12 +32,13 @@ class ScenarioRun(multiproc.Process):
         and `4)` receiving and saving the global discovery with all agents' addresses.
         """
         local_discovery = {}
-        # logging for all Agents their trust history and their topic values if given
+        # logging for all Agents their trust history values if given
         for agent in self.scenario.agents:
             self.logger.write_bulk_to_agent_history(agent, self.scenario.history[agent])
-            if self.scenario.agent_uses_metric(agent, 'content_trust.topic'):
-                self.logger.write_bulk_to_agent_topic_trust(agent, self.scenario.agents_with_metric(
-                    'content_trust.topic')[agent])
+            # topic no longer part of agent, but part of resource
+            #if self.scenario.agent_uses_metric(agent, 'content_trust.topic'):
+            #    self.logger.write_bulk_to_agent_topic_trust(agent, self.scenario.agents_with_metric(
+            #        'content_trust.topic')[agent])
         # creating servers
         for agent in self.agents_at_supervisor:
             free_port = self.find_free_port()
@@ -97,8 +98,8 @@ class ScenarioRun(multiproc.Process):
                     "scenario_run_id": self.scenario_run_id,
                     "observation_id": observation_done_dict["observation_id"],
                     "receiver": observation_done_dict["receiver"],
-                    "trust_log": '<br>'.join(self.logger.read_lines_from_trust_log()),
-                    "receiver_trust_log": '<br>'.join(self.logger.read_lines_from_agent_trust_log(
+                    "trust_log": '<br>'.join(self.logger.read_lines_from_trust_log_str()),
+                    "receiver_trust_log": '<br>'.join(self.logger.read_lines_from_agent_trust_log_str(
                         observation_done_dict["receiver"])),
                 }
                 self.send_queue.put(done_message)

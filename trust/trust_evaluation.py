@@ -3,12 +3,18 @@ from trust.artifacts.content_trust.direct_experience import direct_experience as
 from trust.artifacts.content_trust.popularity import popularity as content_trust_popularity
 from trust.artifacts.content_trust.authority import authority as content_trust_authority
 from trust.artifacts.content_trust.topic import topic as content_trust_topic
+from trust.artifacts.content_trust.provenance import provenance as content_trust_provenance
+from trust.artifacts.content_trust.age import age_check as content_trust_age
+from trust.artifacts.content_trust.related_recources import related as content_trust_related_resources
+from trust.artifacts.content_trust.user_expertise import user_expertise as content_trust_user_expertise
 from trust.artifacts.final_trust import weighted_avg_final_trust
-from models import Scale
+from models import Scale, Observation
+from datetime import datetime
 from loggers.basic_logger import BasicLogger
+from config import TIME_MEASURE
 
 
-def eval_trust(agent, other_agent, current_topic, agent_behavior, scale, logger, discovery):
+def eval_trust(agent, other_agent, observation, agent_behavior, scale, logger, discovery):
     """
     Calculate trust metrics and then finalize all values to one final trust value.
 
@@ -16,8 +22,8 @@ def eval_trust(agent, other_agent, current_topic, agent_behavior, scale, logger,
     :type agent: str
     :param other_agent: The other agent for which the trust relationship is calculated. (end of relationship)
     :type other_agent: str
-    :param current_topic: The topic of the message received and on which the trust is calculated.
-    :type current_topic: str
+    :param observation: Content and metadata of message received and on which the trust is calculated.
+    :type observation: Observation
     :param agent_behavior: Metrics to be used the agent.
     :type agent_behavior: dict
     :param scale: The Scale object to be used by the agent.
@@ -30,79 +36,145 @@ def eval_trust(agent, other_agent, current_topic, agent_behavior, scale, logger,
     :rtype: float or int
     """
     trust_values = {}
-    if 'content_trust.direct_experience' in agent_behavior:
-        direct_experience_value = content_trust_direct_experience(agent, other_agent, scale, logger)
-        logger.write_to_agent_trust_log(agent, "direct experience", other_agent, direct_experience_value)
-        trust_values['content_trust.direct_experience'] = direct_experience_value
+    resource_id = observation.details['uri']
+    start = datetime.utcnow().timestamp() if TIME_MEASURE else None
+
+    # retrieve Recency age limit from agent trust preferences
+    if 'content_trust.recency_age_limit' in agent_behavior:
+        recency_limit = datetime.fromtimestamp(agent_behavior['content_trust.recency_age_limit'])
+    else:
+        recency_limit = datetime.fromtimestamp(0)
+
+    if 'content_trust.context_level' in observation.details and 'content_trust.context_values' in agent_behavior:
+        scale.set_cooperation_threshold(
+            agent_behavior['content_trust.context_values'][observation.details['content_trust.context_level']])
+
+    if 'content_trust.bias' in observation.details:
+        bias_value = observation.details['content_trust.bias']
+        logger.write_to_agent_trust_log(agent, 'content_trust.bias', other_agent, bias_value, resource_id)
+        trust_values['content_trust.bias'] = bias_value
+
+    if 'content_trust.specificity' in observation.details:
+        specificity_value = observation.details['content_trust.specificity']
+        logger.write_to_agent_trust_log(agent, 'content_trust.specificity', other_agent, specificity_value, resource_id)
+        trust_values['content_trust.specificity'] = specificity_value
+
+    if 'content_trust.likelihood' in observation.details:
+        likelihood_value = observation.details['content_trust.likelihood']
+        logger.write_to_agent_trust_log(agent, 'content_trust.likelihood', other_agent, likelihood_value, resource_id)
+        trust_values['content_trust.likelihood'] = likelihood_value
+
+    if 'content_trust.incentive' in observation.details:
+        incentive_value = observation.details['content_trust.incentive']
+        logger.write_to_agent_trust_log(agent, 'content_trust.incentive', other_agent, incentive_value, resource_id)
+        trust_values['content_trust.incentive'] = incentive_value
+
+    if 'content_trust.deception' in observation.details and 'content_trust.deception' in agent_behavior:
+        deception_value = observation.details['content_trust.deception']
+        # deceptive
+        if deception_value < agent_behavior['content_trust.deception']:
+            if TIME_MEASURE:
+                print_time_measure(observation.observation_id, start)
+
+            return scale.minimum_value()
+        logger.write_to_agent_trust_log(agent, 'content_trust.deception', other_agent, deception_value, resource_id)
+        trust_values['content_trust.deception'] = deception_value
+
+    if 'content_trust.max_lifetime_seconds' in agent_behavior:
+        age_punishment_value = content_trust_age(agent_behavior, observation, scale)
+        logger.write_to_agent_trust_log(agent, 'content_trust.age', other_agent, age_punishment_value, resource_id)
+        if 'content_trust.enforce_lifetime' in agent_behavior and agent_behavior['content_trust.enforce_lifetime']:
+            if age_punishment_value < scale.maximum_value():
+                if TIME_MEASURE:
+                    print_time_measure(observation.observation_id, start)
+
+                return scale.minimum_value()
+        else:
+            trust_values['content_trust.age'] = age_punishment_value
+
     if 'content_trust.authority' in agent_behavior:
         authority_value = content_trust_authority(agent_behavior['content_trust.authority'], other_agent, scale)
-        logger.write_to_agent_trust_log(agent, "authority", other_agent, authority_value)
+        logger.write_to_agent_trust_log(agent, 'content_trust.authority', other_agent, authority_value, resource_id)
         trust_values['content_trust.authority'] = authority_value
-    if 'content_trust.popularity' in agent_behavior:
-        popularity_value = content_trust_popularity(agent, other_agent, discovery, scale, logger)
-        logger.write_to_agent_trust_log(agent, "popularity", other_agent, popularity_value)
-        trust_values['content_trust.popularity'] = popularity_value
-    if 'content_trust.recommendation' in agent_behavior:
-        recommendation_value = content_trust_recommendation(agent, other_agent, scale, logger, discovery)
-        logger.write_to_agent_trust_log(agent, "recommendation", other_agent, recommendation_value)
-        trust_values['content_trust.recommendation'] = recommendation_value
+
     if 'content_trust.topic' in agent_behavior:
-        topic_value = content_trust_topic(agent, other_agent, current_topic, scale, logger)
-        logger.write_to_agent_trust_log(agent, "topic", other_agent, topic_value)
+        topic_value = content_trust_topic(agent, other_agent, agent_behavior['content_trust.topic'],
+                                          observation.details['content_trust.topics'], recency_limit, logger, scale)
+        logger.write_to_agent_trust_log(agent, 'content_trust.topic', other_agent, topic_value, resource_id)
         trust_values['content_trust.topic'] = topic_value
-    # # old code from internship (do not use without refactoring)
-    # if 'age' in agent_behavior:
-    #     credibility_value = str(format(
-    #         float(weights["age"]) * age_check(current_agent, other_agent, current_message[24:26]), '.2f'))
-    #     fo = open(log_path.absolute(), "ab+")
-    #     fo.write(bytes(get_current_time() + ', age trustvalue from: ', 'UTF-8') + bytes(other_agent, 'UTF-8') +
-    #         bytes(' ' + credibility_value, 'UTF-8') + bytes("\n", 'UTF-8'))
-    #     fo.close()
-    # if 'agreement' in agent_behavior:
-    #     credibility_value = str(format(float(weights["agreement"]) * float(
-    #         agreement(current_agent, other_agent, current_message[24:26])), '.2f'))
-    #     fo = open(log_path.absolute(), "ab+")
-    #     fo.write(bytes(get_current_time() + ', agreement trustvalue from: ', 'UTF-8') + bytes(other_agent, 'UTF-8') +
-    #         bytes(' ' + credibility_value, 'UTF-8') + bytes("\n", 'UTF-8'))
-    #     fo.close()
-    # if 'provenance' in agent_behavior:
-    #     credibility_value = str(
-    #         format(float(weights["provenance"]) * float(provenance(current_agent, current_message[16:18])), '.2f'))
-    #     fo = open(log_path.absolute(), "ab+")
-    #     fo.write(bytes(get_current_time() + ', provenance trustvalue from: ', 'UTF-8') + bytes(other_agent, 'UTF-8') +
-    #         bytes(' ' + credibility_value, 'UTF-8') + bytes("\n", 'UTF-8'))
-    #     fo.close()
-    # if 'recency' in agent_behavior:
-    #     credibility_value = str(
-    #         format(float(weights["recency"]) * float(recency(current_agent, current_message[24:26])), '.2f'))
-    #     fo = open(log_path.absolute(), "ab+")
-    #     fo.write(bytes(get_current_time() + ', recency trustvalue from: ', 'UTF-8') + bytes(other_agent, 'UTF-8') +
-    #         bytes(' ' + credibility_value, 'UTF-8') + bytes("\n", 'UTF-8'))
-    #     fo.close()
-    # if 'related resource' in agent_behavior:
-    #     credibility_value = str(
-    #         format(float(weights["related resource"]) * float(related(current_agent, current_message[24:26])), '.2f'))
-    #     fo = open(log_path.absolute(), "ab+")
-    #     fo.write(bytes(get_current_time() + ', related resource trustvalue from: ', 'UTF-8') +
-    #         bytes(other_agent, 'UTF-8') + bytes(' ' + credibility_value, 'UTF-8') + bytes("\n", 'UTF-8'))
-    #     fo.close()
-    # if 'specificity' in agent_behavior:
-    #     credibility_value = str(format(float(weights["specificity"]) * float(
-    #         specificity(current_agent, other_agent, current_message[24:26])), '.2f'))
-    #     fo = open(log_path.absolute(), "ab+")
-    #     fo.write(
-    #         bytes(get_current_time() + ', specificity trustvalue from: ', 'UTF-8') + bytes(other_agent, 'UTF-8') +
-    #         bytes(' ' + credibility_value, 'UTF-8') + bytes("\n", 'UTF-8'))
-    #     fo.close()
+
+    if 'content_trust.provenance' in agent_behavior:
+        provenance_value = content_trust_provenance(observation.authors,
+                                                    agent_behavior['content_trust.provenance'], scale)
+        logger.write_to_agent_trust_log(agent, 'content_trust.provenance', other_agent, provenance_value, resource_id)
+        trust_values['content_trust.provenance'] = provenance_value
+
+    if 'content_trust.direct_experience' in agent_behavior:
+        direct_experience_value = content_trust_direct_experience(agent, resource_id, recency_limit, scale, logger)
+        logger.write_to_agent_trust_log(agent, 'content_trust.direct_experience', other_agent, direct_experience_value,
+                                        resource_id)
+        trust_values['content_trust.direct_experience'] = direct_experience_value
+
+    if 'content_trust.recommendation' in agent_behavior:
+        recommendation_value = content_trust_recommendation(agent, other_agent, resource_id, scale, logger, discovery,
+                                                            recency_limit)
+        logger.write_to_agent_trust_log(agent, 'content_trust.recommendation', other_agent, recommendation_value,
+                                        resource_id)
+        trust_values['content_trust.recommendation'] = recommendation_value
+
+    if 'content_trust.related_resources' in agent_behavior:
+        related_resources_value = content_trust_related_resources(
+            agent, observation.details['content_trust.related_resources'], recency_limit, scale, logger)
+        logger.write_to_agent_trust_log(agent, 'content_trust.related_resources', other_agent, related_resources_value,
+                                        resource_id)
+        trust_values['content_trust.related_resources'] = related_resources_value
+
+    if 'content_trust.user_expertise' in agent_behavior:
+        user_expertise_value = content_trust_user_expertise(
+            agent, other_agent, resource_id, observation.details['content_trust.topics'],
+            discovery, scale, logger, recency_limit)
+        logger.write_to_agent_trust_log(agent, 'content_trust.user_expertise', other_agent, user_expertise_value,
+                                        resource_id)
+        trust_values['content_trust.user_expertise'] = user_expertise_value
+
+    if 'content_trust.popularity' in agent_behavior:
+        if 'content_trust.popularity' in agent_behavior and 'peers' in agent_behavior['content_trust.popularity']:
+            peers = agent_behavior['content_trust.popularity']['peers']
+        else:
+            peers = discovery.keys()
+        popularity_value = content_trust_popularity(agent, other_agent, resource_id,
+                                                    peers, discovery,
+                                                    scale, recency_limit)
+        logger.write_to_agent_trust_log(agent, 'content_trust.popularity', other_agent, popularity_value, resource_id)
+        trust_values['content_trust.popularity'] = popularity_value
+
     """
     final Trust calculations
     """
     # delete all metrics from final trust calculation, which results are set to None
     trust_values = {metric: value for metric, value in trust_values.items() if value is not None}
-    final_trust_value = scale.default_value()
+    final_trust_value = None
     if agent_behavior['__final__']:
         if agent_behavior['__final__']['name'] == 'weighted_average':
-            final_trust_value = weighted_avg_final_trust(trust_values, agent_behavior['__final__']['weights'])
+            final_trust_value = weighted_avg_final_trust(trust_values, agent_behavior['__final__']['weights'], None)
+
+    for topic in observation.details['content_trust.topics']:
+        logger.write_to_agent_topic_trust(agent, other_agent, topic, final_trust_value, resource_id)
+
+    if TIME_MEASURE:
+        print_time_measure(observation.observation_id, start)
+
     return final_trust_value
 
 
+def print_time_measure(observation_id, start_time):
+    """
+    Prints the execution time for the current trust evaluation
+
+    :param observation_id: ID of the observation that called the evaluation
+    :type observation_id: Any
+    :param start_time: UTC timestamp from the start of the execution of the evaluation
+    :type start_time: datetime
+    :return:
+    """
+    print(f"evaluation {str(observation_id)} {str(datetime.utcnow().timestamp() - start_time)}s")

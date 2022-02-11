@@ -1,31 +1,25 @@
-###############################################
-#Provenance check
+from models import Scale
 
 
-def provenance(ID, author):
-    pass
-    # file_name = ID + ".txt"
-    # log_path = Logging.LOG_PATH / file_name
-    # fo = open(log_path.absolute(), "r+")
-    # logfile = fo.read()
-    # filesize = len(logfile)
-    # fo.seek(0)
-    # expresult = 0
-    # AUTHOR = author.upper()
-    # while fo.tell() < filesize:
-    #     timelog_line = fo.readline()
-    #     if timelog_line[48:49] == author:
-    #         expresult = direct_experience(ID, AUTHOR)
-    #         #print(expresult)
-    #     expresult = expresult
-    # fo.close()
-    # return format(expresult, '.2f')
+def provenance(authors, trusted_authors, scale):
+    """
+    Calculate provenance trust by reading the authors for the current resource and comparing them to the set of
+    trusted authors. The returned topic trust value expresses the congruency of both sets, normalized to the
+    given scale.
 
-    # file_name = ID + ".txt"
-    # log_path = Logging.LOG_PATH / file_name
-    # provenance_value = 0
-    # with open(log_path.absolute(), "r+") as message_log:
-    #     last_message = message_log.readlines()[-1]
-    #     if last_message[48:49] == author:
-    #         provenance_value = float(directxp(ID, author.upper()))
-    # return format(provenance_value, '.2f')
+    :param authors: A list of original authors of the resource.
+    :type authors: list
+    :param trusted_authors: A list of authors that are trusted by the agent that is evaluating the resource.
+    :type trusted_authors: list
+    :param scale: The Scale object to be used by the agent.
+    :type scale: Scale
+    :return: The provenance trust value
+    :rtype: float or int
+    """
+
+    if len(authors) == 0:
+        return None
+
+    count_congruent = len(set(authors) & set(trusted_authors))
+    score = count_congruent / len(authors)
+    return scale.normalize_value_to_scale(score, 0, 1)

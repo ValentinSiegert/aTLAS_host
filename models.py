@@ -30,34 +30,37 @@ class Observation(UpdatableInterface):
     before = list
     sender = str
     receiver = str
-    author = str
+    authors = list
     topic = str
     message = str
+    details = dict
 
-    def __init__(self, observation_id, before, sender, receiver, author, topic, message):
+    def __init__(self, observation_id, before, sender, receiver, authors, message, details):
         """
         :type observation_id: int
         :type before: list
         :type sender: str
         :type receiver: str
-        :type author: str
-        :type topic: str
+        :type authors: list
         :type message: str
+        :type details: dict
         """
+
         self.observation_id = observation_id
         self.before = before
         self.sender = sender
         self.receiver = receiver
-        self.author = author
-        self.topic = topic
+        self.authors = authors
         self.message = message
-        super().__init__(observation_id=observation_id, before=before, sender=sender, receiver=receiver, author=author,
-                         topic=topic, message=message)
+        self.details = details
+
+        super().__init__(observation_id=observation_id, before=before, sender=sender, receiver=receiver, authors=authors,
+                         message=message, details=details)
 
     def __eq__(self, other):
         return self.observation_id == other.observation_id and self.before == other.before and \
-               self.sender == other.sender and self.receiver == other.receiver and self.author == other.author \
-               and self.topic == other.topic and self.message == other.message
+               self.sender == other.sender and self.receiver == other.receiver and self.authors == other.authors \
+               and self.message == other.message and self.details == other.details
 
 
 class Scale(ABC):
@@ -93,6 +96,33 @@ class Scale(ABC):
         """
         :return: represents the minimum value within this scale
         :rtype: float or int
+        """
+        pass
+
+    @abstractmethod
+    def cooperation_threshold(self):
+        """
+        :return: represents the cooperation threshold for the current scale
+        :rtype: float or int
+        """
+        pass
+
+    @abstractmethod
+    def set_cooperation_threshold(self, new_cooperation_threshold):
+        """
+        Changes the cooperation threshold for the current scale to the received value
+        """
+        pass
+
+    @abstractmethod
+    def normalize_value_to_scale(self, value, data_min, data_max):
+        """
+        Calculates a value that is normalized for the scale interval
+
+        :param value: The value that should be normalized
+        :param data_min: Smallest possible value for the given data
+        :param data_max: Largest possible value for the given data
+        :return: The normalized value
         """
         pass
 
@@ -254,11 +284,36 @@ class Scenario(UpdatableInterface):
             scale_dict = obj_desc['scales_per_agent'][agent]
             cls = load_scale_spec(scale_dict)
             number_type = cls.maximum
-            Scenario.format_number_type_in_dictionary(obj_desc['scales_per_agent'][agent], number_type)
-            Scenario.format_number_type_in_dictionary(obj_desc['history'][agent], number_type)
-            Scenario.format_number_type_in_dictionary(obj_desc['metrics_per_agent'][agent], number_type)
+            if type(obj_desc['scales_per_agent'][agent]) is dict:
+                Scenario.format_number_type_in_dictionary(obj_desc['scales_per_agent'][agent], number_type)
+            else:
+                Scenario.format_number_type_in_listing(obj_desc['scales_per_agent'][agent], number_type)
+            if type(obj_desc['history'][agent]) is dict:
+                Scenario.format_number_type_in_dictionary(obj_desc['history'][agent], number_type)
+            else:
+                Scenario.format_number_type_in_listing(obj_desc['history'][agent], number_type)
+            if type(obj_desc['metrics_per_agent'][agent]) is dict:
+                Scenario.format_number_type_in_dictionary(obj_desc['metrics_per_agent'][agent], number_type)
+            else:
+                Scenario.format_number_type_in_listing(obj_desc['metrics_per_agent'][agent], number_type)
 
-    def __init__(self, name, agents, observations, history, scales_per_agent, metrics_per_agent,
+    def scenario_args(self, name, agents, observations, history, scales_per_agent, metrics_per_agent,
+                      description="No one described this scenario so far."):
+        """
+        This method only exists to give out the real arg list to the Scenario Factory, while init is only requesting
+        those mandatory arguments for the small constructor which is required for the large scenario files.
+
+        :type name: str
+        :type agents: list
+        :type observations: list
+        :type history: dict
+        :type scales_per_agent: dict
+        :type metrics_per_agent: dict
+        :type description: str
+        """
+        pass
+
+    def __init__(self, name, agents=None, observations=None, history=None, scales_per_agent=None, metrics_per_agent=None,
                  description="No one described this scenario so far."):
         """
         :type name: str
@@ -274,15 +329,17 @@ class Scenario(UpdatableInterface):
             #  -> maybe even not completely set and filled up with 0
             pass
         self.name = name
-        self.agents = agents
-        self.observations = observations
-        self.history = history
-        self.scales_per_agent = scales_per_agent
-        self.metrics_per_agent = metrics_per_agent
+        self.agents = agents if agents else []
+        self.observations = observations if observations else []
+        self.history = history if history else {}
+        self.scales_per_agent = scales_per_agent if scales_per_agent else {}
+        self.metrics_per_agent = metrics_per_agent if metrics_per_agent else {}
         self.description = description
-        self.check_consistency()
-        super().__init__(name=name, agents=agents, observations=observations, history=history,
-                         scales_per_agent=scales_per_agent, metrics_per_agent=metrics_per_agent,
+        # only check consistency if scenario is not on small load
+        if agents and observations and history and scales_per_agent and metrics_per_agent:
+            self.check_consistency()
+        super().__init__(name=name, agents=self.agents, observations=self.observations, history=self.history,
+                         scales_per_agent=self.scales_per_agent, metrics_per_agent=self.metrics_per_agent,
                          description=description)
 
     def __str__(self):
@@ -293,7 +350,8 @@ class Scenario(UpdatableInterface):
 
     def __eq__(self, other):
         return self.name == other.name and self.agents == other.agents and self.observations == other.observations and \
-               self.description == other.description
+               self.history == other.history and self.scales_per_agent == other.scales_per_agent and \
+               self.metrics_per_agent == other.metrics_per_agent and self.description == other.description
 
 
 def load_scale_spec(scale_dict):
