@@ -1,4 +1,6 @@
 import json
+import socket
+import time
 from threading import Thread
 from trust.trust_evaluation import eval_trust
 from trust.init_trust import eval_trust_with_init
@@ -8,6 +10,7 @@ from trust.artifacts.content_trust.popularity import popularity_response
 from config import BUFFER_SIZE
 from datetime import datetime
 from loggers.basic_logger import BasicLogger
+from config import TIME_MEASURE
 
 
 class ServerThread(Thread):
@@ -17,10 +20,11 @@ class ServerThread(Thread):
             if message != '':
                 decoded_msg = message.decode('utf-8')
                 if decoded_msg == "END":
-                    self.conn.close()
+                    pass
                 elif decoded_msg.startswith("aTLAS_trust_protocol::"):
                     trust_protocol_head, trust_protocol_message = decoded_msg.split("::")
                     trust_operation = trust_protocol_message.split("_")[0]
+                    print(f"Received trust operation <{trust_operation}> from {self.remote_ip}:{self.remote_port}")
                     trust_value = 0.0
                     if trust_operation == "recommendation":
                         resource_id = trust_protocol_message.split("_")[1]
@@ -38,22 +42,31 @@ class ServerThread(Thread):
                     self.conn.send(bytes(trust_response, 'UTF-8'))
                 else:
                     observation = Observation(**json.loads(decoded_msg))
+                    print(f"Received observation {observation.observation_id} from {self.remote_ip}:{self.remote_port}")
                     resource_id = None
                     if 'uri' in observation.details:
                         resource_id = observation.details['uri']
                     self.logger.write_to_agent_message_log(observation)
+                    trust_eval_time = None
+                    if TIME_MEASURE:
+                        trust_eval_start = time.time()
                     if '__init__' in self.agent_behavior:
-                        trust_value = eval_trust_with_init(self.agent, observation.sender, observation.topic,
+                        trust_value = eval_trust_with_init(self.agent, observation.sender, observation,
                                                            self.agent_behavior, self.scale, self.logger, self.discovery)
                     else:
                         trust_value = eval_trust(self.agent, observation.sender, observation, self.agent_behavior,
                                                  self.scale, self.logger, self.discovery)
+                    if TIME_MEASURE:
+                        trust_eval_end = time.time()
+                        # noinspection PyUnboundLocalVariable
+                        trust_eval_time = trust_eval_end - trust_eval_start
+                        # print(f"Trust Evaluation took {trust_eval_time} s")
                     self.logger.write_to_agent_history(self.agent, observation.sender, trust_value, resource_id)
-                    self.logger.write_to_trust_log(self.agent, observation.sender, trust_value, resource_id)
-
+                    self.logger.write_to_trust_log(self.agent, observation.sender, trust_value, resource_id,
+                                                   trust_eval_time)
                     # topic trust log is written within the trust evaluation
-                    # self.logger.write_to_agent_topic_trust(self.agent, observation.sender, observation.topic, trust_value, resource_id)
-
+                    # self.logger.write_to_agent_topic_trust(self.agent, observation.sender, observation.topic,
+                    #                                        trust_value, resource_id)
                     # TODO: how to work with trust decisions in general?
                     # if float(trust_value) < self.scenario.trust_thresholds['lower_limit']:
                     #     untrustedAgents.append(other_agent)
@@ -65,11 +78,14 @@ class ServerThread(Thread):
                     self.observations_done.append(observation.serialize())
         except BrokenPipeError:
             pass
+        socket.close(self.conn.fileno())
         return True
 
-    def __init__(self, conn, agent, agent_behavior, scale, logger, observations_done, discovery):
+    def __init__(self, conn, ip, port, agent, agent_behavior, scale, logger, observations_done, discovery):
         Thread.__init__(self)
         self.conn = conn
+        self.remote_ip = ip
+        self.remote_port = port
         self.agent = agent
         self.logger = logger
         self.agent_behavior = agent_behavior

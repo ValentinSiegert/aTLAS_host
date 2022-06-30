@@ -54,9 +54,16 @@ class FileLogger(BasicLogger):
         rex = r"(?P<date_time>.*), '(?P<agent>.*)' trusts '(?P<other_agent>.*)': (?P<trust_value>.*)"
         rex_resource = r"(?P<date_time>.*), '(?P<agent>.*)' trusts '(?P<other_agent>.*)' " \
                        r"in resource <(?P<resource_id>.*)>: (?P<trust_value>.*)"
+        rex_time = r"(?P<date_time>.*), '(?P<agent>.*)' trusts '(?P<other_agent>.*)' taking (?P<exec_time>.*)s: " \
+                   r"(?P<trust_value>.*)"
+        rex_time_resource = r"(?P<date_time>.*), '(?P<agent>.*)' trusts '(?P<other_agent>.*)' " \
+                            r"in resource <(?P<resource_id>.*)> taking (?P<exec_time>.*)s: (?P<trust_value>.*)"
         groups = ['date_time', 'agent', 'other_agent', 'trust_value']
         groups_resource = ['date_time', 'agent', 'other_agent', 'resource_id', 'trust_value']
-        return self.read_in_dicts(log_path, rex, rex_resource, groups, groups_resource, len_filter)
+        groups_time = ['date_time', 'agent', 'other_agent', 'exec_time', 'trust_value']
+        groups_time_resource = ['date_time', 'agent', 'other_agent', 'resource_id', 'exec_time', 'trust_value']
+        return self.read_in_dicts(log_path, rex, rex_resource, groups, groups_resource, len_filter, rex_time,
+                                  rex_time_resource, groups_time, groups_time_resource)
 
     def read_lines_from_trust_log_str(self, len_filter=None):
         log_path = self.log_path / f"trust_log.log"
@@ -74,17 +81,19 @@ class FileLogger(BasicLogger):
         :type strip: bool
         :rtype: list
         """
-        try:
-            with open(log_path.absolute(), "r+") as log_file:
-                # strip deletes new line feeds, and filter deletes empty lines from list
-                log_lines = list(filter(None, [line.strip() if strip else line for line in log_file.readlines()]))
-            if len_filter and type(len_filter) is int:
-                log_lines = self.apply_len_filter(log_lines, len_filter)
-            return log_lines
-        except FileNotFoundError:
-            return []
+        with self.semaphore:
+            try:
+                with open(log_path.absolute(), "r") as log_file:
+                    # strip deletes new line feeds, and filter deletes empty lines from list
+                    log_lines = list(filter(None, [line.strip() if strip else line for line in log_file.readlines()]))
+                if len_filter and type(len_filter) is int:
+                    log_lines = self.apply_len_filter(log_lines, len_filter)
+                return log_lines
+            except FileNotFoundError:
+                return []
 
-    def read_in_dicts(self, log_path, rex, rex_resource, groups, groups_resource, len_filter):
+    def read_in_dicts(self, log_path, rex, rex_resource, groups, groups_resource, len_filter, rex_time=None,
+                      rex_time_resource=None, groups_time=None, groups_time_resource=None):
         """
         Reads file in list of dicts, where each dict represents info of one line in file.
 
@@ -100,6 +109,14 @@ class FileLogger(BasicLogger):
         :type groups_resource: list
         :param len_filter: Number of lines to return.
         :type len_filter: int
+        :param rex_time: Regex to match per line if time was logged but not resource ID.
+        :type rex_time: str
+        :param rex_time_resource: Regex to match per line if time and resource ID was logged.
+        :type rex_time_resource: str
+        :param groups_time: Groups in defined in param rex_time.
+        :type groups_time: list
+        :param groups_time_resource: Groups in defined in param rex_time_resource.
+        :type groups_time_resource: list
         :rtype: list
         """
         log_lines = self.read_lines(log_path, len_filter, strip=True)
@@ -107,18 +124,27 @@ class FileLogger(BasicLogger):
         for line in log_lines:
             match = re.search(rex, line)
             match_resource = re.search(rex_resource, line)
-            if match and not match_resource:
+            match_time = re.search(rex_time, line) if rex_time else None
+            match_time_resource = re.search(rex_time_resource, line) if rex_time_resource else None
+            if match and not match_resource and not match_time and not match_time_resource:
                 line_dict = {key: '' for key in groups}
                 for key in groups:
                     line_dict[key] = match.group(key)
-                lines.append(line_dict)
-            elif not match and match_resource:
+            elif not match and match_resource and not match_time and not match_time_resource:
                 line_dict = {key: '' for key in groups_resource}
                 for key in groups_resource:
                     line_dict[key] = match_resource.group(key)
-                lines.append(line_dict)
+            elif match_time and not match and not match_resource and not match_time_resource:
+                line_dict = {key: '' for key in groups_time}
+                for key in groups_time:
+                    line_dict[key] = match_time.group(key)
+            elif match_time_resource and not match and not match_resource and not match_time:
+                line_dict = {key: '' for key in groups_time_resource}
+                for key in groups_time_resource:
+                    line_dict[key] = match_time_resource.group(key)
             else:
                 raise ValueError(f"'{log_path}' included unmatchable line: {line}")
+            lines.append(line_dict)
         return lines
 
     def write_to_agent_history(self, agent, other_agent, history_value, resource_id=None):
@@ -176,10 +202,11 @@ class FileLogger(BasicLogger):
             with open(log_path.absolute(), "a+") as agent_log:
                 print(write_string, file=agent_log)
 
-    def write_to_trust_log(self, agent, other_agent, trust_value, resource_id=None):
+    def write_to_trust_log(self, agent, other_agent, trust_value, resource_id=None, exec_time=None):
         log_path = self.log_path / "trust_log.log"
         write_string = f"{BasicLogger.get_current_time()}, '{agent}' trusts '{other_agent}'" \
-                       f"{f' in resource <{resource_id}>' if resource_id else ''}: {trust_value}"
+                       f"{f' in resource <{resource_id}>' if resource_id else ''}" \
+                       f"{f' taking {exec_time}s' if exec_time else ''}: {trust_value}"
         with self.semaphore:
             with open(log_path.absolute(), 'a+') as trust_log:
                 print(write_string, file=trust_log)

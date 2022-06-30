@@ -180,7 +180,7 @@ class BasicLogger(ABC):
         pass
 
     @abstractmethod
-    def write_to_trust_log(self, agent, other_agent, trust_value, resource_id=None):
+    def write_to_trust_log(self, agent, other_agent, trust_value, resource_id=None, exec_time=None):
         """
         Writes `trust_value` with reference to `other_agent` in the trust log.
 
@@ -192,6 +192,8 @@ class BasicLogger(ABC):
         :type trust_value: float or int
         :param resource_id: The ID of a resource to (dis)trust in.
         :type resource_id: str
+        :param exec_time: The time duration in seconds the trust value required to get calculated.
+        :type exec_time: float
         :rtype: None
         """
         pass

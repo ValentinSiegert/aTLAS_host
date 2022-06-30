@@ -11,4 +11,4 @@ BUFFER_SIZE = 2048
 # aTLAS Version for check at supervisor <-> director connection
 ATLAS_VERSION = "v 0.0.1"
 
-TIME_MEASURE = False
+TIME_MEASURE = True

@@ -12,8 +12,10 @@ class AgentClient(Thread):
         receive_data = tcp_client.recv(BUFFER_SIZE)
         # print("data sent at :"  + time.ctime(time.time()))
         receive_data = receive_data.decode('utf-8')
-        print(receive_data)
-        tcp_client.close()
+        # print(receive_data)
+        tcp_client.shutdown(socket.SHUT_RDWR)
+        # tcp_client.close()
+        socket.close(tcp_client.fileno())
 
     def __init__(self, remote_ip, remote_port, message):
         Thread.__init__(self)

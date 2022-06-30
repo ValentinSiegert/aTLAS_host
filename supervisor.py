@@ -1,9 +1,9 @@
 import argparse
-import importlib
-import re
-import multiprocessing as multiproc
 import aioprocessing
-
+import importlib
+import multiprocessing as multiproc
+import re
+from distutils.util import strtobool
 from models import Scenario
 from scenario_run import ScenarioRun
 
@@ -65,8 +65,9 @@ class Supervisor:
                 self.scenario_runs[new_scenario_run_id] = new_scenario_run
                 new_scenario_run.start()
 
-    def __init__(self, ip_address, max_agents, director_hostname, connector, logger_str):
+    def __init__(self, ip_address, max_agents, director_hostname, connector, logger_str, hostname='', sec_conn=False):
         self.ip_address = ip_address
+        self.hostname = hostname
         self.director_hostname = director_hostname
         self.max_agents = max_agents
         self.agents_in_use = 0
@@ -82,10 +83,15 @@ class Supervisor:
         self.logger_semaphores = [{"semaphore": self.manager.Semaphore(1), "used_by": ""} for i in range(max_agents)]
         # setup observations_done lists
         self.observations_done = [{"list": self.manager.list(), "used_by": ""} for i in range(max_agents)]
+        # create supervisor info for connector
+        supervisor_info = {"ip_address": self.ip_address}
+        if hostname:
+            supervisor_info["hostname"] = hostname
         # get correct connector to director
         module = importlib.import_module("connectors." + re.sub("([A-Z])", "_\g<1>", connector).lower()[1:])
         connector_class = getattr(module, connector)
-        self.connector = connector_class(director_hostname, max_agents, self.send_queue, self.pipe_dict)
+        self.connector = connector_class(director_hostname, max_agents, self.send_queue, self.pipe_dict, sec_conn,
+                                         supervisor_info=supervisor_info)
 
 
 if __name__ == '__main__':
@@ -96,13 +102,18 @@ if __name__ == '__main__':
                         help="The hostname of the director, where the supervisor shall register at.")
     parser.add_argument("-ip", "--address", default="127.0.0.1",
                         help="The IP address of the supervisor itself.")
+    parser.add_argument("-hn", "--host", default="",
+                        help="The hostname of the supervisor itself. It serves yet only as identifier in logs.")
     parser.add_argument("-log", "--logger", default="FileLogger", choices=['FileLogger'],
                         help="The logger class to use for logging trust values during a scenario run.")
     parser.add_argument("max_agents", type=int,
                         help="The maximal number of agents existing in parallel under this supervisor.")
+    parser.add_argument("-wss", "--sec-socket", type=lambda x: bool(strtobool(x)), nargs='?', const=True,
+                        default=False, help="Whether to use a secure websocket connection to the director.")
     args = parser.parse_args()
     # set multiprocessing start method
     multiproc.set_start_method('spawn')
     # init supervisor as class and execute
-    supervisor = Supervisor(args.address, args.max_agents, args.director, args.connector, args.logger)
+    supervisor = Supervisor(args.address, args.max_agents, args.director, args.connector, args.logger, args.host,
+                            args.sec_socket)
     supervisor.run()
